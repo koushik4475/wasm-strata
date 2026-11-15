@@ -131,7 +131,10 @@ wasm-strata/
 ### Building and Testing
 
 ```bash
-# Clone the repository
+# WASM Strata | Capability-Sandboxed WebAssembly Runtime for Edge and Serverless Workloads
+
+WASM Strata is a WebAssembly micro-runtime project focused on sandboxing untrusted workloads with resource controls. The README documents deterministic fuel metering, linear-memory bounds checks, capability-based host bindings, and runtime support for edge/serverless execution patterns. It is useful for engineers exploring WebAssembly runtimes, secure plugin systems, and lightweight Function-as-a-Service designs; benchmark figures depend on the host environment.
+
 git clone https://github.com/ER-brocode/wasm-strata.git
 cd wasm-strata
 
