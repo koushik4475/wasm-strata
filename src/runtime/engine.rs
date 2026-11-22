@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use wasmtime::{Config, Engine, Instance, Linker, Module, Store};
+use wasmtime::{Config, Engine, Instance, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
 
 use crate::error::{StrataError, StrataResult};
 use crate::host::kv::KvStore;
@@ -13,6 +13,7 @@ use crate::runtime::meter::{FuelBudget, FuelMeter};
 pub struct HostState {
     pub fuel_meter: FuelMeter,
     pub memory_checker: MemoryBoundsChecker,
+    pub store_limits: StoreLimits,
     pub kv_store: Arc<dyn KvStore>,
     pub net_acl: Arc<NetworkAcl>,
     pub custom_data: Option<Vec<u8>>,
@@ -113,6 +114,10 @@ impl StrataEngine {
         let host_state = HostState {
             fuel_meter: FuelMeter::new(self.config.fuel_budget),
             memory_checker: MemoryBoundsChecker::new(self.config.memory_limits),
+            store_limits: StoreLimitsBuilder::new()
+                .memory_size(self.config.memory_limits.max_byte_cap)
+                .memories(1)
+                .build(),
             kv_store: Arc::clone(&self.kv_store),
             net_acl: Arc::clone(&self.net_acl),
             custom_data: Some(input_payload.to_vec()),
@@ -120,6 +125,10 @@ impl StrataEngine {
         };
 
         let mut store = Store::new(&self.engine, host_state);
+        // Enforce guest memory growth in Wasmtime itself. The standalone
+        // MemoryBoundsChecker only protects host-mediated buffer accesses;
+        // it cannot intercept a guest memory.grow instruction.
+        store.limiter(|state| &mut state.store_limits);
         store.set_fuel(self.config.fuel_budget.initial_fuel)?;
 
         let mut linker = Linker::new(&self.engine);
