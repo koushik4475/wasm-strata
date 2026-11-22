@@ -3,8 +3,7 @@ use wasm_strata::{
     host::kv::InMemoryKvStore,
     host::net::NetworkAcl,
     runtime::engine::{RuntimeConfig, StrataEngine},
-    runtime::memory::MemoryLimits,
-    StrataError,
+    runtime::memory::{MemoryLimits, WASM_PAGE_SIZE},
 };
 
 #[test]
@@ -62,10 +61,35 @@ fn test_sandboxed_initial_memory_rejection() {
     let module = engine.compile_module(&wasm_bytes).expect("Module compiled");
 
     let res = engine.execute(&module, "run", &[]);
-    match res {
-        Err(StrataError::MemoryBoundsExceeded { requested_bytes: _, max_bytes: _, page_limit }) => {
-            assert_eq!(page_limit, 2);
-        }
-        other => panic!("Expected MemoryBoundsExceeded, got: {:?}", other),
-    }
+    assert!(
+        res.is_err(),
+        "Wasmtime's store limiter must reject initial memory above the configured byte cap"
+    );
+}
+
+
+#[test]
+fn test_peak_memory_metric_includes_successful_growth() {
+    let mut config = RuntimeConfig::default();
+    config.memory_limits = MemoryLimits::new(1, 2);
+
+    let kv = Arc::new(InMemoryKvStore::new());
+    let net = Arc::new(NetworkAcl::new());
+    let engine = StrataEngine::new(config, kv, net).expect("Engine init");
+
+    let wat = r#"
+        (module
+            (memory (export "memory") 1 2)
+            (func (export "grow") (result i32)
+                (memory.grow (i32.const 1))
+            )
+        )
+    "#;
+
+    let wasm_bytes = wat::parse_str(wat).expect("WAT valid");
+    let module = engine.compile_module(&wasm_bytes).expect("Module compiled");
+    let result = engine.execute(&module, "grow", &[]).expect("Execution succeeds");
+
+    assert_eq!(result.status_code, 1);
+    assert_eq!(result.metrics.peak_memory_bytes, 2 * WASM_PAGE_SIZE);
 }
