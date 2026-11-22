@@ -58,3 +58,32 @@ fn test_snapshot_optimizer_caching() {
     // Verify pointer identity (Arc should refer to identical cached instance)
     assert!(Arc::ptr_eq(&mod1, &mod2), "Cached modules should share Arc instance");
 }
+
+
+#[test]
+fn test_snapshot_optimizer_rejects_unsafe_module_ids() {
+    let config = RuntimeConfig::default();
+    let kv = Arc::new(InMemoryKvStore::new());
+    let net = Arc::new(NetworkAcl::new());
+    let engine = StrataEngine::new(config, kv, net).unwrap();
+    let optimizer = SnapshotOptimizer::new(None);
+    let wasm_bytes = wat::parse_str(r#"(module (func (export "ping")))"#).unwrap();
+
+    for module_id in ["", ".", "..", "../outside", "nested/module", "module\\\\escape", "bad id"] {
+        let result = optimizer.get_or_compile(engine.engine(), module_id, &wasm_bytes);
+        assert!(result.is_err(), "unsafe module id should be rejected: {module_id:?}");
+    }
+}
+
+#[test]
+fn test_snapshot_optimizer_accepts_safe_module_ids() {
+    let config = RuntimeConfig::default();
+    let kv = Arc::new(InMemoryKvStore::new());
+    let net = Arc::new(NetworkAcl::new());
+    let engine = StrataEngine::new(config, kv, net).unwrap();
+    let optimizer = SnapshotOptimizer::new(None);
+    let wasm_bytes = wat::parse_str(r#"(module (func (export "ping")))"#).unwrap();
+
+    assert!(optimizer.get_or_compile(engine.engine(), "module_v1.2-test", &wasm_bytes).is_ok());
+    assert!(optimizer.get_or_compile(engine.engine(), &"a".repeat(129), &wasm_bytes).is_err());
+}
