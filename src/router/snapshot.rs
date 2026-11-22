@@ -83,6 +83,21 @@ impl SnapshotOptimizer {
         module_id: &str,
         wasm_bytes: &[u8],
     ) -> StrataResult<Arc<Module>> {
+        // module_id becomes part of a filesystem path when disk caching is
+        // enabled. Restrict it to a single safe filename component.
+        if module_id.is_empty()
+            || module_id.len() > 128
+            || module_id == "."
+            || module_id == ".."
+            || !module_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+        {
+            return Err(StrataError::SnapshotError(
+                "Invalid module id: use 1-128 ASCII letters, digits, '.', '_' or '-' (not '.' or '..')".to_string(),
+            ));
+        }
+
         // 1. Fast path: check in-memory cache
         if let Some(module) = self.in_memory_cache.get(module_id) {
             return Ok(module);
