@@ -191,7 +191,12 @@ impl StrataEngine {
         let duration = start_time.elapsed().as_micros();
 
         let output_payload = store.data_mut().return_buffer.take().unwrap_or_default();
-        let peak_memory_bytes = (initial_pages as usize) * crate::runtime::memory::WASM_PAGE_SIZE;
+        // WebAssembly linear memory can grow but cannot shrink, so its final
+        // size is also its peak size for this execution.
+        let peak_memory_bytes = instance
+            .get_memory(&mut store, "memory")
+            .map(|memory| memory.size(&store) as usize * crate::runtime::memory::WASM_PAGE_SIZE)
+            .unwrap_or(0);
 
         Ok(ExecutionResult {
             status_code,
